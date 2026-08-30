@@ -1,6 +1,6 @@
 # daac-bpe
 
-[![Crates.io](https://img.shields.io/crates/v/daachorse)](https://crates.io/crates/daac-bpe)
+[![Crates.io](https://img.shields.io/crates/v/daac-bpe)](https://crates.io/crates/daac-bpe)
 [![Documentation](https://docs.rs/daachorse/badge.svg)](https://docs.rs/daac-bpe)
 [![Rust](https://img.shields.io/badge/rust-1.96%2B-blue.svg?maxAge=3600)](https://github.com/vbkaisetsu/daac-bpe)
 
