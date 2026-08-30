@@ -1,5 +1,9 @@
 # daac-bpe
 
+[![Crates.io](https://img.shields.io/crates/v/daachorse)](https://crates.io/crates/daac-bpe)
+[![Documentation](https://docs.rs/daachorse/badge.svg)](https://docs.rs/daac-bpe)
+[![Rust](https://img.shields.io/badge/rust-1.96%2B-blue.svg?maxAge=3600)](https://github.com/vbkaisetsu/daac-bpe)
+
 A BPE tokenizer that operates in linear time relative to the input length.
 
 While this implementation is based on the following paper, various optimizations have been
@@ -32,12 +36,6 @@ To optimize the memory layout for a sample of the text to be tokenized, build th
 `IncrementalBpeBuilder::corpus()`.
 
 ## Benchmark
-
-One sample is one whole-corpus pass; implementations are interleaved within each
-round (forward then reverse order) so CPU frequency drift cancels, pinned to one
-P-core of an i7-1270P. All output and working buffers are allocated once and
-reused across passes. Full tables, methodology, and reproduction commands:
-[`bench/RESULTS-abba-o200k.md`](bench/RESULTS-abba-o200k.md).
 
 ### Tokenizers
 
