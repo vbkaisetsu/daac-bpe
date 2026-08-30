@@ -1,0 +1,13 @@
+[package]
+name = "daac-bpe"
+version = "0.1.0"
+edition = "2024"
+description = "Incremental BPE tokenizer based on daachorse"
+license = "MIT OR Apache-2.0"
+rust-version = "1.96"
+
+[dependencies]
+daachorse = "5.0.0"
+hashbrown = "0.17"
+rustc-hash = { version = "2", default-features = false }
+thiserror = { version = "2", default-features = false }
