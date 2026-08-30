@@ -2,9 +2,18 @@
 name = "daac-bpe"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.96"
+authors = [
+    "Koichi Akabe <vbkaisetsu@gmail.com>",
+]
 description = "Incremental BPE tokenizer based on daachorse"
 license = "MIT OR Apache-2.0"
-rust-version = "1.96"
+homepage = "https://github.com/vbkaisetsu/daac-bpe"
+repository = "https://github.com/vbkaisetsu/daac-bpe"
+readme = "README.md"
+keywords = ["algorithm", "tokenizer", "bpe", "double-array"]
+categories = ["text-processing", "algorithms", "encoding", "no-std"]
+exclude = [".*"]
 
 [dependencies]
 daachorse = "5.0.0"
