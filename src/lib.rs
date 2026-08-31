@@ -12,8 +12,8 @@
 //!
 //! # Examples
 //!
-//! A vocabulary is an ordered list of token byte strings, and a token's rank is its position in
-//! the list. All 256 single-byte tokens must be present; merge rules follow in priority order.
+//! A vocabulary is an ordered list of token byte strings, and a token's rank is its position in the
+//! list. All 256 single-byte tokens must be present; merge rules follow in priority order.
 //!
 //! ```
 //! use daac_bpe::IncrementalBpe;
@@ -31,8 +31,28 @@
 //! # Ok::<(), daac_bpe::Error>(())
 //! ```
 //!
-//! To optimize the memory layout for a sample of the text to be tokenized, build the tokenizer
-//! with [`IncrementalBpeBuilder::corpus()`].
+//! Special tokens are registered with [`IncrementalBpeBuilder::special_tokens()`]. They live in the
+//! same automaton as the vocabulary, so the scan that tokenizes the text also detects them, without
+//! a separate splitting pass.
+//!
+//! ```
+//! use daac_bpe::IncrementalBpeBuilder;
+//!
+//! let mut vocab: Vec<Vec<u8>> = (0u8..=255).map(|b| vec![b]).collect();
+//! vocab.push(b"ab".to_vec()); // rank 256
+//!
+//! let bpe = IncrementalBpeBuilder::new()
+//!     .special_tokens([(b"<|endoftext|>", 257)])
+//!     .build(&vocab)?;
+//!
+//! let mut tokens = vec![];
+//! bpe.encode(b"ab<|endoftext|>ab", &mut tokens);
+//! assert_eq!(tokens, [256, 257, 256]);
+//! # Ok::<(), daac_bpe::Error>(())
+//! ```
+//!
+//! To optimize the memory layout for a sample of the text to be tokenized, build the tokenizer with
+//! [`IncrementalBpeBuilder::corpus()`].
 #![no_std]
 
 #[cfg(not(any(target_pointer_width = "32", target_pointer_width = "64")))]
@@ -92,7 +112,8 @@ impl IncrementalBpe {
     ///
     /// * [`Error::EmptyToken`] - A token of zero-length is present.
     /// * [`Error::DuplicateToken`] - The same byte string appears twice.
-    /// * [`Error::VocabTooLarge`] - The token count or the total byte length does not fit in a `u32`.
+    /// * [`Error::VocabTooLarge`] - The token count or the total byte length does not fit in a
+    ///   `u32`.
     /// * [`Error::MissingByteToken`] - A single-byte token is missing.
     /// * [`Error::NotProper`] - The dictionary is not proper.
     /// * [`Error::TokenTooLong`] - A token longer than `u16::MAX` is present.
@@ -131,6 +152,10 @@ impl IncrementalBpe {
     /// while a chunk is consumed, so reusing one `Vec` across chunks removes the per-chunk
     /// allocation. Tokens are written only once the chunk is complete.
     ///
+    /// An occurrence of a special token ends the BPE of the text before it, contributes its own id,
+    /// and restarts the tokenization after it, so the result is exactly what splitting the chunk on
+    /// the special tokens first and encoding the pieces separately would give.
+    ///
     /// # Arguments
     ///
     /// * `piece` - Chunk to tokenize, the unit a pre-tokenizer delivers to the BPE stage.
@@ -141,11 +166,38 @@ impl IncrementalBpe {
     /// ```
     /// use daac_bpe::IncrementalBpe;
     ///
-    /// let bpe = IncrementalBpe::new((0u8..=255).map(|b| [b]))?;
+    /// let mut vocab: Vec<Vec<u8>> = (0u8..=255).map(|b| vec![b]).collect();
+    /// vocab.push(b"ab".to_vec()); // rank 256
+    ///
+    /// let bpe = IncrementalBpe::new(&vocab)?;
+    ///
     /// let mut tokens = vec![];
-    /// bpe.encode(b"hi", &mut tokens);
-    /// bpe.encode(b"!", &mut tokens);
-    /// assert_eq!(tokens, [u32::from(b'h'), u32::from(b'i'), u32::from(b'!')]);
+    /// bpe.encode(b"abba", &mut tokens);
+    /// bpe.encode(b"bab", &mut tokens);
+    /// assert_eq!(tokens, [256, u32::from(b'b'), u32::from(b'a'), u32::from(b'b'), 256]);
+    /// # Ok::<(), daac_bpe::Error>(())
+    /// ```
+    ///
+    /// With a special token, whose id lies outside the rank space of the vocabulary:
+    ///
+    /// ```
+    /// use daac_bpe::IncrementalBpeBuilder;
+    ///
+    /// let mut vocab: Vec<Vec<u8>> = (0u8..=255).map(|b| vec![b]).collect();
+    /// vocab.push(b"ab".to_vec()); // rank 256
+    ///
+    /// let bpe = IncrementalBpeBuilder::new()
+    ///     .special_tokens([(b"<x>", 257)])
+    ///     .build(&vocab)?;
+    ///
+    /// let mut tokens = vec![];
+    /// bpe.encode(b"ab<x>ab", &mut tokens);
+    /// assert_eq!(tokens, [256, 257, 256]);
+    ///
+    /// // No merge may span an occurrence: the `a` and the `b` around it stay apart.
+    /// tokens.clear();
+    /// bpe.encode(b"a<x>b", &mut tokens);
+    /// assert_eq!(tokens, [u32::from(b'a'), 257, u32::from(b'b')]);
     /// # Ok::<(), daac_bpe::Error>(())
     /// ```
     pub fn encode(&self, piece: &[u8], out: &mut Vec<u32>) {
@@ -160,6 +212,15 @@ impl IncrementalBpe {
     /// interval test without a special case. Timestamps are stored rather than token ids;
     /// `emit_tokens` maps them back.
     ///
+    /// A special token ends the current segment. Truncating the history to the bytes before the
+    /// occurrence is safe because each entry depends only on the bytes up to its own position, so a
+    /// kept entry can never have used a τ reaching into the occurrence; restarting the automaton
+    /// behind it does the same on the right.
+    ///
+    /// The single `reserve` still covers the whole chunk: the buffer holds the tokens emitted so
+    /// far, one sentinel and the entries of the current segment, and a token stands for at least
+    /// one consumed byte while an entry stands for one unconsumed byte.
+    ///
     /// # Arguments
     ///
     /// * `piece` - Chunk to tokenize.
@@ -171,8 +232,8 @@ impl IncrementalBpe {
             return;
         }
 
-        // If the chunk is itself a canonical token then T_D(t) == [t], so that single token is
-        // the answer.
+        // If the chunk is itself a canonical token then T_D(t) == [t], so that single token is the
+        // answer. The index holds the special tokens too, so a chunk that is one lands here.
         if let Some(rank) = self.index.get(piece) {
             out.push(rank);
             return;
@@ -180,26 +241,58 @@ impl IncrementalBpe {
 
         // One slot per byte plus the ε sentinel, so the per-byte loop never reallocates.
         out.reserve(piece.len() + 1);
-        let base = out.len();
-        out.push(INVALID_ID);
-        self.consume(piece, out, base, visit);
-        self.emit_tokens(out, base);
+        let mut rest = piece;
+        loop {
+            let base = out.len();
+            out.push(INVALID_ID);
+            let Some((end, id, len)) = self.consume(rest, out, base, visit) else {
+                self.emit_tokens(out, base);
+                return;
+            };
+            // `consume` pushed no entry for the occurrence's last byte, so this drops the other
+            // `len - 1` and leaves the prefix history alone.
+            out.truncate(base + 1 + (end - usize::from(len)));
+            self.emit_tokens(out, base);
+            out.push(id);
+            rest = &rest[end..];
+            if rest.is_empty() {
+                return;
+            }
+        }
     }
 
-    /// Consumes a whole chunk and fills the history.
+    /// Consumes a chunk and fills the history, stopping at the first special token.
     ///
     /// `find_overlapping_no_suffix_iter` yields the single longest pattern ending at each position,
     /// which is exactly τ(sc). Every single byte is in V̄, so it yields one match per input byte.
+    /// No token may contain a special token, so a special token is the longest pattern at its own
+    /// end position and is always reported.
+    ///
+    /// Returns `None` when the chunk holds no special token, and otherwise the position just after
+    /// the occurrence, the id to emit for it, and its byte length.
     ///
     /// # Arguments
     ///
-    /// * `piece` - Chunk to consume, which is the entire input as far as the automaton is concerned.
+    /// * `piece` - Chunk to consume, which is the entire input as far as the automaton is
+    ///   concerned.
     /// * `buf`, `base` - Where the history lives. See [`encode_visit`](Self::encode_visit).
     /// * `visit` - CST profiling hook.
-    fn consume(&self, piece: &[u8], buf: &mut Vec<u32>, base: usize, visit: &mut impl FnMut(u32)) {
+    fn consume(
+        &self,
+        piece: &[u8],
+        buf: &mut Vec<u32>,
+        base: usize,
+        visit: &mut impl FnMut(u32),
+    ) -> Option<(usize, u32, u16)> {
         for m in self.pma.find_overlapping_no_suffix_iter(piece) {
-            self.advance(m.value(), buf, base, visit);
+            let entry = m.value();
+            // Never taken unless special tokens are registered, so the branch is free in practice.
+            if entry.is_special() {
+                return Some((m.end(), entry.special_id(), entry.len));
+            }
+            self.advance(entry, buf, base, visit);
         }
+        None
     }
 
     /// Computes θ for one byte from the payload of τ and appends it to the history.

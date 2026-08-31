@@ -7,11 +7,12 @@ use core::fmt;
 /// Error variants of this crate.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// An entry of length zero is present.
-    #[error("The vocabulary contains an empty token")]
+    /// An entry of length zero is present, either in the vocabulary or among the special tokens.
+    #[error("An empty token or special token is present")]
     EmptyToken,
 
-    /// The same byte string appears twice.
+    /// The same byte string appears twice, either in the vocabulary or among the special tokens.
+    /// The positions are relative to the list it was found in.
     #[error("The token {} appears twice, at positions {first} and {second}", Bytes(.token))]
     DuplicateToken {
         token: Vec<u8>,
@@ -27,9 +28,9 @@ pub enum Error {
     #[error("The single-byte token 0x{0:02x} is missing")]
     MissingByteToken(u8),
 
-    /// The dictionary is *not proper*, i.e. a component of some canonical rule does not come
-    /// before the merged token, which would require standard BPE to return to a priority it has
-    /// already passed.
+    /// The dictionary is *not proper*, i.e. a component of some canonical rule does not come before
+    /// the merged token, which would require standard BPE to return to a priority it has already
+    /// passed.
     #[error(
         "vocabulary is not proper: the canonical rule ({} [rank {pre_rank}], {} [rank {suc_rank}]) \
         -> {} [rank {rank}] has a component whose rank is not smaller than the merged token's rank",
@@ -54,6 +55,28 @@ pub enum Error {
     )]
     TokenTooLong { token: Vec<u8>, len: usize },
 
+    /// A special token id is already taken, either by the vocabulary's rank space, i.e. the length
+    /// of the original token list, or by another special token.
+    #[error(
+        "the special token {} has id {id}, which is already taken by the vocabulary's rank space \
+        or by another special token",
+        Bytes(.token)
+    )]
+    SpecialIdConflict { token: Vec<u8>, id: u32 },
+
+    /// A special token occurs inside a canonical token or another special token, equality included,
+    /// so it would not be the unique longest pattern ending at its own end position.
+    #[error(
+        "the special token {} occurs inside {}, so it cannot be detected reliably; no vocabulary \
+        token and no other special token may contain a special token",
+        Bytes(.special),
+        Bytes(.container)
+    )]
+    SpecialTokenNotIsolated {
+        special: Vec<u8>,
+        container: Vec<u8>,
+    },
+
     /// Building the Aho-Corasick automaton failed.
     #[error("failed to build the Aho-Corasick automaton: {0}")]
     Automaton(String),
@@ -62,8 +85,8 @@ pub enum Error {
 /// Specialized result type of this crate.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-/// Formats a token's byte string for a message, quoted if it is printable ASCII and as a `0x…`
-/// hex dump otherwise. A `Display` adapter rather than a helper, so nothing is allocated.
+/// Formats a token's byte string for a message, quoted if it is printable ASCII and as a `0x…` hex
+/// dump otherwise. A `Display` adapter rather than a helper, so nothing is allocated.
 struct Bytes<'a>(&'a [u8]);
 
 impl fmt::Display for Bytes<'_> {

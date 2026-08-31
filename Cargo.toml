@@ -13,7 +13,7 @@ repository = "https://github.com/vbkaisetsu/daac-bpe"
 readme = "README.md"
 keywords = ["algorithm", "tokenizer", "bpe", "double-array"]
 categories = ["text-processing", "algorithms", "encoding", "no-std"]
-exclude = [".*"]
+exclude = [".*", "/bench", "/docs"]
 
 [dependencies]
 daachorse = "5.0.0"

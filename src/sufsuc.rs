@@ -29,8 +29,8 @@ pub(crate) struct CentroidSearchTreeNode {
     pub up_component: u32,
     /// Start of this node's slice of `CentroidSearchTree::children`.
     pub child_start: u32,
-    /// The number of children of `token`, counting *all* of them rather than only those left in
-    /// the component, so that the binary search sees the original sibling set.
+    /// The number of children of `token`, counting *all* of them rather than only those left in the
+    /// component, so that the binary search sees the original sibling set.
     pub child_len: u32,
     /// A copy of `table.search[token]`, so that one descent step reads only this node.
     pub search: SearchEntry,
@@ -78,8 +78,7 @@ struct Builder<'a> {
     /// Subtree sizes within the current component, counted with the traversal's starting point as
     /// the root.
     size: Vec<u32>,
-    /// For each node of the current component, the size of its largest child
-    /// subtree.
+    /// For each node of the current component, the size of its largest child subtree.
     best_child: Vec<u32>,
     /// BFS order of the current component, which doubles as the list of its nodes.
     order: Vec<u32>,
@@ -196,8 +195,8 @@ impl CentroidSearchTree {
                     .matches()
                     .map(|m| token_of_dfs[usize::from_u32(m.value().dfs_in_tau)]),
             );
-            // Length order is a topological order of SufSucTree(τ), because suc(u) is a suffix of
-            // τ strictly shorter than u and thus always comes before u. Local node 0 is the root.
+            // Length order is a topological order of SufSucTree(τ), because suc(u) is a suffix of τ
+            // strictly shorter than u and thus always comes before u. Local node 0 is the root.
             suffixes.sort_unstable_by_key(|&x| table.token_len[usize::from_u32(x)]);
             // τ is its own longest suffix, and the root is the atomic token of its last byte.
             builder.build_local(&suffixes);
@@ -273,8 +272,7 @@ impl Builder<'_> {
         self.trav_par.resize(m, INVALID_ID);
     }
 
-    /// Decomposes a component recursively and returns the index of the
-    /// corresponding CST node.
+    /// Decomposes a component recursively and returns the index of the corresponding CST node.
     ///
     /// Removing the centroid splits the component into an upward one and one per child, each at
     /// most half the original size, so the recursion depth is O(log |τ|).
@@ -507,8 +505,8 @@ mod tests {
         usize::from(want > 2)
     }
 
-    /// Runs [`check_one_tree`] for every token of `seeds` vocabularies, and
-    /// returns how many non-trivial trees it saw.
+    /// Runs [`check_one_tree`] for every token of `seeds` vocabularies, and returns how many
+    /// non-trivial trees it saw.
     ///
     /// # Arguments
     ///
@@ -524,18 +522,17 @@ mod tests {
         checked
     }
 
-    /// `descend` binary-searches the children of a centroid, so they must be
-    /// sorted by the start of their valid interval. Sibling intervals are mutually exclusive, so
-    /// they must also be disjoint.
+    /// `descend` binary-searches the children of a centroid, so they must be sorted by the start of
+    /// their valid interval. Sibling intervals are mutually exclusive, so they must also be
+    /// disjoint.
     #[test]
     fn centroid_children_are_sorted_and_disjoint() {
         let checked = check_sibling_order(4);
         assert!(checked > 0,);
     }
 
-    /// Decomposing SufSucTree(τ) must place every one of its nodes in exactly
-    /// one component, so each suffix token appears exactly once in the tree
-    /// reachable from that root.
+    /// Decomposing SufSucTree(τ) must place every one of its nodes in exactly one component, so
+    /// each suffix token appears exactly once in the tree reachable from that root.
     #[test]
     fn each_centroid_tree_holds_every_suffix_token_once() {
         let checked = check_tree_membership(4);
